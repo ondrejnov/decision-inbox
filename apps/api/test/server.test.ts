@@ -9,6 +9,11 @@ import type {
 } from "@decision-inbox/contracts";
 import { createApp, type AgentisGateway } from "../src/server.js";
 import { AgentisRpcError } from "../src/agentis-client.js";
+import type { PushSender } from "../src/push-dispatcher.js";
+import {
+  SqlitePushRegistrationStore,
+  type PushRegistrationStore,
+} from "../src/push-registration-store.js";
 
 const session: SessionResponse = {
   authenticated: true,
@@ -52,9 +57,10 @@ const event: DecisionChangedEvent = {
   status: "pending",
   occurred_at: "2026-08-07T10:00:00.000Z",
 };
+const validPushToken = "p".repeat(32);
 
 describe("BFF routes", () => {
-  it("requires an Agentis token for session, decisions, count, resolve, and SSE", async () => {
+  it("requires an Agentis token for session, decisions, count, resolve, push registration, and SSE", async () => {
     const app = await createApp({ agentis: gateway() });
 
     for (const request of [
@@ -63,6 +69,19 @@ describe("BFF routes", () => {
       { method: "GET", url: "/v1/decisions/pending-count" },
       { method: "GET", url: "/v1/events" },
       { method: "POST", url: "/v1/decisions/resolve", payload: {} },
+      {
+        method: "PUT",
+        url: "/v1/push/registration",
+        payload: {
+          installationId: "installation-1",
+          pushToken: validPushToken,
+          platform: "android",
+        },
+      },
+      {
+        method: "DELETE",
+        url: "/v1/push/registration/installation-1",
+      },
     ]) {
       const response = await app.inject(request);
       expect(response.statusCode).toBe(401);
@@ -73,6 +92,100 @@ describe("BFF routes", () => {
         },
       });
     }
+    await app.close();
+  });
+
+  it("derives push registration ownership from the authenticated session", async () => {
+    const pushStore = new SqlitePushRegistrationStore({ path: ":memory:" });
+    const app = await createApp({
+      agentis: gateway({
+        getSession: async (token) =>
+          token === "other-user"
+            ? {
+                ...session,
+                user: { id: "user-2", displayName: "Grace Hopper" },
+              }
+            : session,
+      }),
+      pushStore,
+    });
+
+    const invalid = await app.inject({
+      method: "PUT",
+      url: "/v1/push/registration",
+      headers: { "x-auth-token": "user-secret" },
+      payload: {
+        installationId: "installation-1",
+        pushToken: validPushToken,
+        platform: "android",
+        tenantId: "client-controlled",
+      },
+    });
+    const oversizedToken = await app.inject({
+      method: "PUT",
+      url: "/v1/push/registration",
+      headers: { "x-auth-token": "user-secret" },
+      payload: {
+        installationId: "installation-1",
+        pushToken: "t".repeat(4_097),
+        platform: "android",
+      },
+    });
+    const invalidInstallation = await app.inject({
+      method: "DELETE",
+      url: `/v1/push/registration/${"i".repeat(257)}`,
+      headers: { "x-auth-token": "user-secret" },
+    });
+    const registered = await app.inject({
+      method: "PUT",
+      url: "/v1/push/registration",
+      headers: { "x-auth-token": "user-secret" },
+      payload: {
+        installationId: "installation-1",
+        pushToken: validPushToken,
+        platform: "android",
+      },
+    });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({
+      error: { code: "invalid_request" },
+    });
+    expect(oversizedToken.statusCode).toBe(400);
+    expect(oversizedToken.json()).toMatchObject({
+      error: { code: "invalid_request" },
+    });
+    expect(invalidInstallation.statusCode).toBe(400);
+    expect(invalidInstallation.json()).toMatchObject({
+      error: { code: "invalid_request" },
+    });
+    expect(registered.statusCode).toBe(200);
+    expect(registered.json()).toEqual({ ok: true });
+    expect(pushStore.listByTenant("tenant-1")).toMatchObject([
+      {
+        installationId: "installation-1",
+        pushToken: validPushToken,
+        tenantId: "tenant-1",
+        userId: "user-1",
+      },
+    ]);
+
+    const wrongUser = await app.inject({
+      method: "DELETE",
+      url: "/v1/push/registration/installation-1",
+      headers: { "x-auth-token": "other-user" },
+    });
+    expect(wrongUser.statusCode).toBe(200);
+    expect(pushStore.listByTenant("tenant-1")).toHaveLength(1);
+
+    const removed = await app.inject({
+      method: "DELETE",
+      url: "/v1/push/registration/installation-1",
+      headers: { "x-auth-token": "user-secret" },
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toEqual({ ok: true });
+    expect(pushStore.listByTenant("tenant-1")).toEqual([]);
     await app.close();
   });
 
@@ -171,6 +284,153 @@ describe("BFF routes", () => {
     expect(received[0]).toEqual(
       expect.not.objectContaining({ tenant_id: "tenant-1" }),
     );
+    await app.close();
+  });
+
+  it("dispatches created pending events once and removes invalid tokens", async () => {
+    const pushStore = new SqlitePushRegistrationStore({ path: ":memory:" });
+    pushStore.register({
+      installationId: "installation-1",
+      pushToken: "invalid-push-token",
+      platform: "android",
+      tenantId: "tenant-1",
+      userId: "user-1",
+    });
+    pushStore.register({
+      installationId: "installation-2",
+      pushToken: "other-tenant-token",
+      platform: "android",
+      tenantId: "tenant-2",
+      userId: "user-2",
+    });
+    const deliveries: Array<{ token: string; eventId: string }> = [];
+    const pushSender: PushSender = {
+      send: async (registration, deliveredEvent) => {
+        deliveries.push({
+          token: registration.pushToken,
+          eventId: deliveredEvent.event_id,
+        });
+        return "invalid-token";
+      },
+    };
+    const app = await createApp({
+      agentis: gateway(),
+      pushSender,
+      pushStore,
+      webhookAllowedIps: ["127.0.0.1/32"],
+    });
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/agentis/decision-changed",
+      payload: event,
+    });
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/agentis/decision-changed",
+      payload: event,
+    });
+    const answered = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/agentis/decision-changed",
+      payload: {
+        ...event,
+        event_id: "event-2",
+        transition: "answered",
+        status: "answered",
+      },
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(duplicate.json()).toEqual({ accepted: true, deduplicated: true });
+    expect(answered.statusCode).toBe(202);
+    expect(deliveries).toEqual([
+      { token: "invalid-push-token", eventId: "event-1" },
+    ]);
+    expect(pushStore.listByTenant("tenant-1")).toEqual([]);
+    expect(pushStore.listByTenant("tenant-2")).toHaveLength(1);
+    await app.close();
+  });
+
+  it("reports SQLite registration failures without blaming Agentis", async () => {
+    const pushStore: PushRegistrationStore = {
+      register: () => {
+        throw new Error("disk full");
+      },
+      unregister: () => false,
+      listByTenant: () => [],
+      removeByToken: () => undefined,
+      close: () => undefined,
+    };
+    const app = await createApp({ agentis: gateway(), pushStore });
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/v1/push/registration",
+      headers: { "x-auth-token": "user-secret" },
+      payload: {
+        installationId: "installation-1",
+        pushToken: validPushToken,
+        platform: "android",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      error: {
+        code: "push_registration_unavailable",
+        message: "Push registration storage is unavailable.",
+      },
+    });
+    await app.close();
+  });
+
+  it("accepts the webhook when push delivery fails without logging tokens", async () => {
+    const pushStore = new SqlitePushRegistrationStore({ path: ":memory:" });
+    pushStore.register({
+      installationId: "installation-1",
+      pushToken: "must-not-be-logged",
+      platform: "android",
+      tenantId: "tenant-1",
+      userId: "user-1",
+    });
+    const logLines: string[] = [];
+    const app = await createApp({
+      agentis: gateway(),
+      logger: {
+        level: "warn",
+        stream: new Writable({
+          write(chunk, _encoding, callback) {
+            logLines.push(chunk.toString());
+            callback();
+          },
+        }),
+      },
+      pushSender: {
+        send: async () => {
+          throw new Error("provider unavailable");
+        },
+      },
+      pushStore,
+      webhookAllowedIps: ["127.0.0.1/32"],
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/agentis/decision-changed",
+      payload: event,
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ accepted: true });
+    expect(logLines).toHaveLength(1);
+    expect(JSON.parse(logLines[0] ?? "{}")).toMatchObject({
+      msg: "Push notification dispatch failed",
+      eventId: "event-1",
+      tenantId: "tenant-1",
+    });
+    expect(logLines.join("\n")).not.toContain("must-not-be-logged");
+    expect(pushStore.listByTenant("tenant-1")).toHaveLength(1);
     await app.close();
   });
 

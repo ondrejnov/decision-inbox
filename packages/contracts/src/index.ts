@@ -172,6 +172,41 @@ export const SessionResponseSchema = z.object({
 });
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 
+export const AndroidPushInstallationIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256);
+
+export const AndroidPushRegistrationRequestSchema = z
+  .object({
+    installationId: AndroidPushInstallationIdSchema,
+    pushToken: z.string().trim().min(32).max(4_096),
+    platform: z.literal("android"),
+  })
+  .strict();
+export type AndroidPushRegistrationRequest = z.infer<
+  typeof AndroidPushRegistrationRequestSchema
+>;
+
+export const AndroidPushRegistrationParamsSchema = z
+  .object({
+    installationId: AndroidPushInstallationIdSchema,
+  })
+  .strict();
+export type AndroidPushRegistrationParams = z.infer<
+  typeof AndroidPushRegistrationParamsSchema
+>;
+
+export const PushRegistrationResponseSchema = z
+  .object({
+    ok: z.literal(true),
+  })
+  .strict();
+export type PushRegistrationResponse = z.infer<
+  typeof PushRegistrationResponseSchema
+>;
+
 export const SettingsSchema = z.object({
   notificationsEnabled: z.boolean(),
   notifyWhileActive: z.boolean(),

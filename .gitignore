@@ -5,7 +5,20 @@ coverage/
 .screenshots/*
 !.screenshots/.gitkeep
 .dev/
+.data/
 *.log
 .DS_Store
 .agentis
 .screenshots
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+apps/mobile/android/local.properties
+
+# Local Firebase client configuration
+**/google-services.json
+apps/mobile/firebase-defines.json
+*firebase-service-account*.json

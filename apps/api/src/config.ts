@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { parseAllowlist } from "./ip-allowlist.js";
 
 export interface ApiConfig {
@@ -10,6 +11,8 @@ export interface ApiConfig {
   corsOrigins: string[];
   webhookIdempotencyTtlMs: number;
   webhookIdempotencyMaxEntries: number;
+  sqlitePath: string;
+  firebaseProjectId: string;
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -34,5 +37,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       env.WEBHOOK_IDEMPOTENCY_MAX_ENTRIES,
       10_000,
     ),
+    sqlitePath:
+      env.SQLITE_PATH ??
+      (env.NODE_ENV === "test"
+        ? ":memory:"
+        : resolve(".data/decision-inbox.sqlite")),
+    firebaseProjectId: env.FIREBASE_PROJECT_ID?.trim() ?? "",
   };
 }

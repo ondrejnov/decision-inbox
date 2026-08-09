@@ -8,8 +8,10 @@ metadata:
     app.kubernetes.io/name: agapprove-api
     app.kubernetes.io/component: bff
 spec:
-  # SSE replay and webhook idempotency are in memory, so keep a single replica.
+  # SQLite registrations, SSE replay, and webhook idempotency require one replica.
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: agapprove-api
@@ -24,6 +26,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -55,6 +59,15 @@ spec:
               value: ""
             - name: TRUSTED_PROXY_CIDRS
               value: ""
+            - name: SQLITE_PATH
+              value: "/data/decision-inbox.sqlite"
+            # Provide ADC through Workload Identity or GOOGLE_APPLICATION_CREDENTIALS
+            # from a Kubernetes Secret for this Firebase project.
+            - name: FIREBASE_PROJECT_ID
+              value: "agentis-8f18d"
+          volumeMounts:
+            - name: data
+              mountPath: /data
           readinessProbe:
             httpGet:
               path: /health
@@ -76,6 +89,25 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agapprove-api-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agapprove-api-data
+  namespace: apps
+  labels:
+    app.kubernetes.io/name: agapprove-api
+    app.kubernetes.io/component: bff
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
 ---
 apiVersion: v1
 kind: Service

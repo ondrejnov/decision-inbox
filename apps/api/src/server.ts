@@ -5,10 +5,13 @@ import Fastify, {
   type FastifyServerOptions,
 } from "fastify";
 import {
+  AndroidPushRegistrationParamsSchema,
+  AndroidPushRegistrationRequestSchema,
   DecisionChangedEventSchema,
   DecisionListResponseSchema,
   DecisionViewSchema,
   PendingCountResponseSchema,
+  PushRegistrationResponseSchema,
   ResolveRequestSchema,
   ResolveResponseSchema,
   SessionResponseSchema,
@@ -16,6 +19,7 @@ import {
   type DecisionListResponse,
   type DecisionView,
   type PendingCountResponse,
+  type PushRegistrationResponse,
   type ResolveRequest,
   type ResolveResponse,
   type SessionResponse,
@@ -26,6 +30,17 @@ import { ApiError } from "./errors.js";
 import { EventHub, formatSseEvent } from "./event-hub.js";
 import { IdempotencyStore } from "./idempotency.js";
 import { isIpAllowed } from "./ip-allowlist.js";
+import {
+  DisabledPushSender,
+  FcmPushSender,
+  RegistrationPushDispatcher,
+  type PushDispatcher,
+  type PushSender,
+} from "./push-dispatcher.js";
+import {
+  SqlitePushRegistrationStore,
+  type PushRegistrationStore,
+} from "./push-registration-store.js";
 
 export interface AgentisGateway {
   getSession(token: string): Promise<SessionResponse>;
@@ -44,6 +59,9 @@ export interface AppOptions {
   eventHub?: EventHub;
   idempotency?: IdempotencyStore;
   logger?: FastifyServerOptions["logger"];
+  pushDispatcher?: PushDispatcher;
+  pushSender?: PushSender;
+  pushStore?: PushRegistrationStore;
   webhookAllowedIps?: string[];
 }
 
@@ -102,8 +120,10 @@ function errorFromUnknown(error: unknown): ApiError {
     fastifyError.statusCode >= 400 &&
     fastifyError.statusCode < 500
   ) {
+    const status =
+      fastifyError.statusCode === 414 ? 400 : fastifyError.statusCode;
     return new ApiError(
-      fastifyError.statusCode,
+      status,
       fastifyError.statusCode === 413 ? "request_too_large" : "invalid_request",
       fastifyError.statusCode === 413
         ? "The request is too large."
@@ -146,6 +166,30 @@ function bodyValue(request: FastifyRequest): ResolveRequest {
   return parsed.data;
 }
 
+function pushRegistrationBody(request: FastifyRequest) {
+  const parsed = AndroidPushRegistrationRequestSchema.safeParse(request.body);
+  if (!parsed.success) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "The push registration payload is invalid.",
+    );
+  }
+  return parsed.data;
+}
+
+function pushRegistrationParams(request: FastifyRequest) {
+  const parsed = AndroidPushRegistrationParamsSchema.safeParse(request.params);
+  if (!parsed.success) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "The push registration installation is invalid.",
+    );
+  }
+  return parsed.data;
+}
+
 export async function createApp(options: AppOptions = {}): Promise<BffApp> {
   const loaded = loadConfig();
   const config: ApiConfig = {
@@ -169,13 +213,26 @@ export async function createApp(options: AppOptions = {}): Promise<BffApp> {
       baseUrl: config.agentisApiUrl,
       sessionMethod: config.agentisSessionRpc,
     });
+  const pushStore =
+    options.pushStore ??
+    new SqlitePushRegistrationStore({ path: config.sqlitePath });
+  const pushSender =
+    options.pushSender ??
+    (config.firebaseProjectId
+      ? new FcmPushSender(config.firebaseProjectId)
+      : new DisabledPushSender());
+  const pushDispatcher =
+    options.pushDispatcher ??
+    new RegistrationPushDispatcher(pushStore, pushSender);
   const app = Fastify({
     logger:
       options.logger ??
       (process.env.NODE_ENV === "test" ? false : { level: "info" }),
     bodyLimit: 64 * 1024,
+    routerOptions: { maxParamLength: 4_096 },
   }) as unknown as BffApp;
   app.decorate("eventHub", eventHub);
+  app.addHook("onClose", async () => pushStore.close());
   await app.register(cors, {
     origin:
       config.corsOrigins.length === 0
@@ -211,6 +268,65 @@ export async function createApp(options: AppOptions = {}): Promise<BffApp> {
       throw errorFromUnknown(error);
     }
   });
+
+  app.put("/v1/push/registration", async (request, reply) => {
+    try {
+      const token = authToken(request);
+      const registration = pushRegistrationBody(request);
+      const identity = SessionResponseSchema.parse(
+        await agentis.getSession(token),
+      );
+      try {
+        pushStore.register({
+          ...registration,
+          tenantId: identity.tenant.id,
+          userId: identity.user.id,
+        });
+      } catch {
+        throw new ApiError(
+          503,
+          "push_registration_unavailable",
+          "Push registration storage is unavailable.",
+        );
+      }
+      const response: PushRegistrationResponse =
+        PushRegistrationResponseSchema.parse({ ok: true });
+      return reply.send(response);
+    } catch (error) {
+      throw errorFromUnknown(error);
+    }
+  });
+
+  app.delete(
+    "/v1/push/registration/:installationId",
+    async (request, reply) => {
+      try {
+        const token = authToken(request);
+        const { installationId } = pushRegistrationParams(request);
+        const identity = SessionResponseSchema.parse(
+          await agentis.getSession(token),
+        );
+        try {
+          pushStore.unregister(
+            installationId,
+            identity.tenant.id,
+            identity.user.id,
+          );
+        } catch {
+          throw new ApiError(
+            503,
+            "push_registration_unavailable",
+            "Push registration storage is unavailable.",
+          );
+        }
+        const response: PushRegistrationResponse =
+          PushRegistrationResponseSchema.parse({ ok: true });
+        return reply.send(response);
+      } catch (error) {
+        throw errorFromUnknown(error);
+      }
+    },
+  );
 
   app.get("/v1/decisions", async (request, reply) => {
     try {
@@ -324,6 +440,17 @@ export async function createApp(options: AppOptions = {}): Promise<BffApp> {
       return reply.code(202).send({ accepted: true, deduplicated: true });
     }
     eventHub.publish(parsed.data);
+    try {
+      await pushDispatcher.dispatch(parsed.data);
+    } catch {
+      request.log.warn(
+        {
+          eventId: parsed.data.event_id,
+          tenantId: parsed.data.tenant_id,
+        },
+        "Push notification dispatch failed",
+      );
+    }
     return reply.code(202).send({ accepted: true });
   });
 
