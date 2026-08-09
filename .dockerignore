@@ -1,0 +1,8 @@
+.git
+.dev
+.screenshots
+coverage
+node_modules
+release
+**/dist
+*.log
