@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import 'app_controller.dart';
 import 'models.dart';
+import 'question_prompt.dart';
 
 class HistoryDecisionCard extends StatelessWidget {
   const HistoryDecisionCard({
@@ -166,7 +167,10 @@ class _QuestionHistory extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 5),
-        Text(question.prompt, style: const TextStyle(height: 1.4)),
+        QuestionPrompt(
+          data: question.prompt,
+          style: const TextStyle(height: 1.4),
+        ),
         if (question.options.isNotEmpty) ...[
           const SizedBox(height: 10),
           for (final option in question.options)

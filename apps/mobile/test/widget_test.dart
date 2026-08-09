@@ -4,6 +4,7 @@ import 'package:decision_inbox/src/app_controller.dart';
 import 'package:decision_inbox/src/decision_card.dart';
 import 'package:decision_inbox/src/models.dart';
 import 'package:decision_inbox/src/notification_service.dart';
+import 'package:decision_inbox/src/question_prompt.dart';
 import 'package:decision_inbox/src/storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,6 +67,17 @@ void main() {
 
     submit = tester.widget(find.widgetWithText(FilledButton, 'Submit answers'));
     expect(submit.onPressed, isNotNull);
+  });
+
+  testWidgets('question prompt renders markdown', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: QuestionPrompt(data: 'Choose a **target**')),
+      ),
+    );
+
+    expect(find.text('Choose a **target**', findRichText: true), findsNothing);
+    expect(find.text('Choose a target', findRichText: true), findsOneWidget);
   });
 }
 

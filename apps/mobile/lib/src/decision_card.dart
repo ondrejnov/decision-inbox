@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_controller.dart';
 import 'models.dart';
+import 'question_prompt.dart';
 
 class DecisionCard extends StatefulWidget {
   const DecisionCard({
@@ -317,17 +318,9 @@ class _DecisionCardState extends State<DecisionCard> {
                 ),
               ),
               const SizedBox(height: 5),
-              Text.rich(
-                TextSpan(
-                  text: question.prompt,
-                  children: [
-                    if (question.required)
-                      const TextSpan(
-                        text: ' *',
-                        style: TextStyle(color: Color(0xff4f46e5)),
-                      ),
-                  ],
-                ),
+              QuestionPrompt(
+                data: question.prompt,
+                isRequired: question.required,
                 style: const TextStyle(
                   color: Color(0xff0f172a),
                   fontSize: 16,
