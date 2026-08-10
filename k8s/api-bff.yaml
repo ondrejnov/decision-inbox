@@ -61,10 +61,10 @@ spec:
               value: ""
             - name: SQLITE_PATH
               value: "/data/decision-inbox.sqlite"
-            # Provide ADC through Workload Identity or GOOGLE_APPLICATION_CREDENTIALS
-            # from a Kubernetes Secret for this Firebase project.
             - name: FIREBASE_PROJECT_ID
               value: "agentis-8f18d"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "agapprove-firebase-service-account.json"
           volumeMounts:
             - name: data
               mountPath: /data

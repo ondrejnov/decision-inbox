@@ -307,10 +307,23 @@ if (!hasSingleInstance) {
         baselineStore,
         settings: settings.get(),
         isWindowActive: () => mainWindow?.isFocused() ?? false,
+        resolveTaskTitle: async (event) => {
+          const pending = await bff.getDecisions("pending", 1);
+          const decision =
+            pending.items.find(
+              (item) =>
+                item.externalId === event.external_id &&
+                item.kind === event.decision_kind,
+            ) ?? pending.items.find((item) => item.taskId === event.task_id);
+          return decision?.taskTitle;
+        },
         deliver: (summary) => {
           if (!Notification.isSupported()) return;
           const notification = new Notification({
-            title: "Decision Inbox",
+            title:
+              summary.count === 1 && summary.taskTitle
+                ? summary.taskTitle
+                : "Decision Inbox",
             body: notificationBody(summary),
             silent: true,
           });

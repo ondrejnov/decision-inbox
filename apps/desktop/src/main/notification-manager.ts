@@ -10,6 +10,7 @@ import { EncryptedValueStore } from "./encrypted-store.js";
 export interface NotificationSummary {
   count: number;
   kinds: DecisionKind[];
+  taskTitle?: string;
 }
 
 export interface NotificationManagerOptions {
@@ -17,7 +18,15 @@ export interface NotificationManagerOptions {
   settings: Settings;
   isWindowActive: () => boolean;
   deliver: (summary: NotificationSummary) => void;
+  resolveTaskTitle?: (
+    event: DecisionChangedSseEvent,
+  ) => Promise<string | undefined>;
   burstMs?: number;
+}
+
+interface PendingNotification {
+  kind: DecisionKind;
+  event: DecisionChangedSseEvent;
 }
 
 function keyFor(kind: DecisionKind, externalId: string): string {
@@ -29,12 +38,15 @@ export class NotificationManager {
   private readonly baselineStore: EncryptedValueStore;
   private readonly isWindowActive: () => boolean;
   private readonly deliver: (summary: NotificationSummary) => void;
+  private readonly resolveTaskTitle:
+    | ((event: DecisionChangedSseEvent) => Promise<string | undefined>)
+    | undefined;
   private readonly burstMs: number;
   private settings: Settings;
   private baseline = new Set<string>();
   private loaded = false;
   private persistenceAvailable = true;
-  private pendingBurst = new Map<DecisionKind, number>();
+  private pendingBurst: PendingNotification[] = [];
   private burstTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(options: NotificationManagerOptions) {
@@ -42,6 +54,7 @@ export class NotificationManager {
     this.settings = options.settings;
     this.isWindowActive = options.isWindowActive;
     this.deliver = options.deliver;
+    this.resolveTaskTitle = options.resolveTaskTitle;
     this.burstMs = options.burstMs ?? 800;
   }
 
@@ -86,9 +99,16 @@ export class NotificationManager {
     this.baseline = current;
     this.persist();
     if (shouldSummarize) {
-      this.deliverSummary(items.map((item) => item.kind));
+      this.deliverSummary(
+        items.map((item) => ({ kind: item.kind, taskTitle: item.taskTitle })),
+      );
     } else if (newItems.length > 0) {
-      this.deliverSummary(newItems.map((item) => item.kind));
+      this.deliverSummary(
+        newItems.map((item) => ({
+          kind: item.kind,
+          taskTitle: item.taskTitle,
+        })),
+      );
     }
   }
 
@@ -104,10 +124,7 @@ export class NotificationManager {
       if (this.baseline.has(key)) return;
       this.baseline.add(key);
       this.persist();
-      this.pendingBurst.set(
-        event.decision_kind,
-        (this.pendingBurst.get(event.decision_kind) ?? 0) + 1,
-      );
+      this.pendingBurst.push({ kind: event.decision_kind, event });
       this.scheduleBurst();
       return;
     }
@@ -131,34 +148,56 @@ export class NotificationManager {
     if (this.burstTimer) return;
     this.burstTimer = setTimeout(() => {
       this.burstTimer = undefined;
-      const kinds: DecisionKind[] = [];
-      let count = 0;
-      for (const [kind, value] of this.pendingBurst) {
-        count += value;
-        kinds.push(kind);
-      }
-      this.pendingBurst.clear();
-      if (count > 0)
-        this.deliverSummary(
-          Array.from(
-            { length: count },
-            (_, index) => kinds[index % kinds.length]!,
-          ),
-        );
+      const pending = this.pendingBurst;
+      this.pendingBurst = [];
+      if (pending.length > 0) void this.deliverBurst(pending);
     }, this.burstMs);
   }
 
-  private deliverSummary(kinds: readonly DecisionKind[]): void {
-    if (!this.persistenceAvailable) return;
-    if (!this.settings.notificationsEnabled) return;
-    if (this.isWindowActive() && !this.settings.notifyWhileActive) return;
+  private async deliverBurst(
+    pending: readonly PendingNotification[],
+  ): Promise<void> {
+    if (!this.canDeliver()) return;
+    let taskTitle: string | undefined;
+    if (pending.length === 1 && this.resolveTaskTitle) {
+      try {
+        taskTitle = await this.resolveTaskTitle(pending[0]!.event);
+      } catch {
+        // A failed title lookup must not suppress the generic notification.
+      }
+    }
+    this.deliverSummary(
+      pending.map((item) => ({ kind: item.kind, taskTitle })),
+    );
+  }
+
+  private deliverSummary(
+    notifications: readonly {
+      kind: DecisionKind;
+      taskTitle?: string;
+    }[],
+  ): void {
+    if (!this.canDeliver()) return;
     const counts = new Map<DecisionKind, number>();
-    for (const kind of kinds) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    for (const { kind } of notifications)
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
     const orderedKinds: DecisionKind[] = [];
     for (const kind of ["question", "approval"] as const) {
       if (counts.has(kind)) orderedKinds.push(kind);
     }
-    this.deliver({ count: kinds.length, kinds: orderedKinds });
+    const taskTitle =
+      notifications.length === 1 ? notifications[0]?.taskTitle : undefined;
+    this.deliver({
+      count: notifications.length,
+      kinds: orderedKinds,
+      ...(taskTitle ? { taskTitle } : {}),
+    });
+  }
+
+  private canDeliver(): boolean {
+    if (!this.persistenceAvailable || !this.settings.notificationsEnabled)
+      return false;
+    return !this.isWindowActive() || this.settings.notifyWhileActive;
   }
 
   private persist(): void {

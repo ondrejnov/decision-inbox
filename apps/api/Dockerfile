@@ -15,7 +15,8 @@ RUN npm run build --workspace @decision-inbox/contracts \
 FROM node:22-alpine AS runtime
 
 ENV NODE_ENV=production \
-    SQLITE_PATH=/data/decision-inbox.sqlite
+    SQLITE_PATH=/data/decision-inbox.sqlite \
+    GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-service-account.json
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -26,6 +27,7 @@ RUN npm ci --omit=dev --workspace @decision-inbox/api --workspace @decision-inbo
 
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+COPY --chown=node:node apps/api/agapprove-firebase-service-account.json ./firebase-service-account.json
 
 RUN mkdir /data && chown node:node /data
 

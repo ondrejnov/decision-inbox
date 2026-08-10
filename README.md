@@ -80,7 +80,7 @@ FCM uses `google-auth-library` Application Default Credentials (ADC) with the `f
 
 The Agentis token is tested and stored as ciphertext using Electron `safeStorage` in the main process. There is no plaintext fallback. During onboarding the main process captures keyboard/paste input through Electron's `before-input-event`; the renderer receives only the masked character count and never receives the token. Subsequent session, list, resolve, SSE, and logout operations are main-process operations. If OS secure storage is unavailable, persistence and notifications fail closed.
 
-Settings include global notifications, notify-while-active, close-to-tray, and autostart. Autostart is enabled only after onboarding consent. Native notifications are silent, generic, burst-aggregated, and open the pending inbox rather than a specific card. Encrypted baseline keys prevent restart spam; the first sync may show one summary for existing pending items.
+Settings include global notifications, notify-while-active, close-to-tray, and autostart. Autostart is enabled only after onboarding consent. Native notifications are silent, burst-aggregated, use the task title for a single item, and open the pending inbox rather than a specific card. Aggregated notifications keep the generic `Decision Inbox` title. Encrypted baseline keys prevent restart spam; the first sync may show one summary for existing pending items.
 
 ## BFF API and Agentis contract
 
