@@ -9,6 +9,7 @@ import type { DesktopApi } from "../shared/ipc";
 import { desktopApi } from "./api";
 import { Inbox } from "./components/Inbox";
 import { Onboarding } from "./components/Onboarding";
+import notificationSoundUrl from "./notification-sound.wav?inline";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +34,15 @@ function Workspace({ api }: { api: DesktopApi }) {
   });
 
   useEffect(() => api.onAuthRequired(() => setAuthRequired(true)), [api]);
+
+  useEffect(() => {
+    const sound = new Audio(notificationSoundUrl);
+    sound.preload = "auto";
+    return api.onNotificationSound(() => {
+      sound.currentTime = 0;
+      void sound.play().catch(() => undefined);
+    });
+  }, [api]);
 
   if (sessionQuery.isPending) {
     return (

@@ -108,12 +108,12 @@ class _DecisionCardState extends State<DecisionCard> {
     });
   }
 
-  Future<void> _submitApproval(String action) => _resolve({
+  Future<void> _submitApproval(bool approved) => _resolve({
     'decisionKind': 'approval',
     'externalId': widget.decision.externalId,
     'taskId': widget.decision.taskId,
     'runId': widget.decision.runId,
-    'action': action,
+    'action': approved ? 'approve' : 'reject',
     if (_commentController.text.trim().isNotEmpty)
       'comment': _commentController.text.trim(),
   });
@@ -424,7 +424,7 @@ class _DecisionCardState extends State<DecisionCard> {
               ),
               onPressed: _submitting || widget.readOnly
                   ? null
-                  : () => _submitApproval('reject'),
+                  : () => _submitApproval(false),
               icon: const Icon(Icons.close),
               label: const Text('Reject'),
             ),
@@ -437,7 +437,7 @@ class _DecisionCardState extends State<DecisionCard> {
               ),
               onPressed: _submitting || widget.readOnly
                   ? null
-                  : () => _submitApproval('approve'),
+                  : () => _submitApproval(true),
               icon: _submitting
                   ? const SizedBox.square(
                       dimension: 18,

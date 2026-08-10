@@ -74,6 +74,24 @@ function renderCard(
 }
 
 describe("DecisionCard", () => {
+  it("renders Markdown in a question prompt", () => {
+    renderCard({
+      ...question,
+      title: "Review the rollout",
+      questions: [
+        {
+          ...question.questions![0]!,
+          prompt:
+            "Choose the **target** and verify:\n\n- Health checks\n- Rollback plan",
+        },
+      ],
+    });
+
+    expect(screen.getByText("target").tagName).toBe("STRONG");
+    expect(screen.getByRole("list")).toHaveTextContent("Health checks");
+    expect(screen.getByRole("list")).toHaveTextContent("Rollback plan");
+  });
+
   it("renders option descriptions without repeating the question as the card title", () => {
     renderCard(question);
 

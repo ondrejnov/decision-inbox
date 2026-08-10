@@ -5,6 +5,7 @@ import type { SettingsPatch } from "../shared/ipc.js";
 
 export const defaultSettings: Settings = {
   notificationsEnabled: true,
+  notificationSoundEnabled: false,
   notifyWhileActive: false,
   closeToTray: true,
   autostart: false,

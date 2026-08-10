@@ -209,6 +209,7 @@ export type PushRegistrationResponse = z.infer<
 
 export const SettingsSchema = z.object({
   notificationsEnabled: z.boolean(),
+  notificationSoundEnabled: z.boolean().default(false),
   notifyWhileActive: z.boolean(),
   closeToTray: z.boolean(),
   autostart: z.boolean(),

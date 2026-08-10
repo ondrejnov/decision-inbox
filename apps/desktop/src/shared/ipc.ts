@@ -12,6 +12,7 @@ import type {
 
 export interface SettingsPatch {
   notificationsEnabled?: boolean;
+  notificationSoundEnabled?: boolean;
   notifyWhileActive?: boolean;
   closeToTray?: boolean;
   autostart?: boolean;
@@ -37,6 +38,7 @@ export interface DesktopApi {
   onDecisionChanged(
     listener: (event: DecisionChangedSseEvent) => void,
   ): () => void;
+  onNotificationSound(listener: () => void): () => void;
   onOpenPending(listener: () => void): () => void;
   onTokenEntryState(listener: (state: { length: number }) => void): () => void;
   onTokenEntrySubmit(listener: () => void): () => void;

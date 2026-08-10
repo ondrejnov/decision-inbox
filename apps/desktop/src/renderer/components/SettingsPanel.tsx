@@ -1,5 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { BellIcon, BellSlashIcon, GearSixIcon } from "@phosphor-icons/react";
+import {
+  BellIcon,
+  BellSlashIcon,
+  GearSixIcon,
+  SpeakerHighIcon,
+} from "@phosphor-icons/react";
 import type { Settings } from "@decision-inbox/contracts";
 import type { DesktopApi, SettingsPatch } from "../../shared/ipc";
 
@@ -51,6 +56,32 @@ export function SettingsPanel({ api, settings, onChange }: SettingsPanelProps) {
               <br />
               <span className="text-xs text-slate-500">
                 Show new pending decisions.
+              </span>
+            </span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={settings.notificationSoundEnabled}
+            onChange={(event) =>
+              update({ notificationSoundEnabled: event.target.checked })
+            }
+            className="mt-0.5 size-4 accent-indigo-600"
+          />
+          <span className="flex gap-2">
+            <SpeakerHighIcon
+              size={17}
+              className="mt-0.5 text-slate-400"
+              aria-hidden="true"
+            />
+            <span>
+              <strong className="font-medium text-slate-800">
+                Notification sound
+              </strong>
+              <br />
+              <span className="text-xs text-slate-500">
+                Play a short tone with notifications.
               </span>
             </span>
           </span>

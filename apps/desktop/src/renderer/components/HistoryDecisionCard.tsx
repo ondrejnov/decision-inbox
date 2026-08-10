@@ -12,6 +12,7 @@ import {
   XCircleIcon,
 } from "@phosphor-icons/react";
 import type { Decision } from "@decision-inbox/contracts";
+import { MarkdownText } from "./MarkdownText";
 
 interface HistoryDecisionCardProps {
   decision: Decision;
@@ -223,9 +224,10 @@ function QuestionHistory({ decision }: { decision: Decision }) {
           <div className="text-sm font-semibold text-slate-900">
             {question.header ?? `Question ${index + 1}`}
           </div>
-          <p className="mt-1 whitespace-pre-wrap text-base text-slate-800">
-            {question.prompt}
-          </p>
+          <MarkdownText
+            className="mt-1 text-base text-slate-800"
+            content={question.prompt}
+          />
           {question.options.length > 0 ? (
             <div className="mt-4 space-y-2">
               {question.options.map((option) => (

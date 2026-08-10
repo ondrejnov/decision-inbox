@@ -12,6 +12,7 @@ import {
 import type { Decision, ResolveRequest } from "@decision-inbox/contracts";
 import { isStaleError, type ResolveFunction } from "../api";
 import { HistoryDecisionCard } from "./HistoryDecisionCard";
+import { MarkdownText } from "./MarkdownText";
 
 interface DecisionCardProps {
   /** Normalized decision rendered by the BFF. */
@@ -212,17 +213,25 @@ export function DecisionCard({
               optionIds: [],
               answerText: "",
             };
+            const promptId = `${decision.externalId}-${question.id}-prompt`;
             return (
               <fieldset
                 key={question.id}
                 className="space-y-2.5"
                 data-testid={`question-${question.id}`}
+                aria-labelledby={promptId}
               >
-                <legend className="text-sm font-semibold text-slate-800">
+                <div
+                  id={promptId}
+                  className="flex items-start text-sm font-semibold text-slate-800"
+                >
                   <span className="mr-2 text-xs font-normal text-slate-400">
                     {questionIndex + 1}
                   </span>
-                  {question.prompt}
+                  <MarkdownText
+                    className="min-w-0 flex-1"
+                    content={question.prompt}
+                  />
                   {question.required ? (
                     <span
                       className="ml-1 text-indigo-600"
@@ -231,7 +240,7 @@ export function DecisionCard({
                       *
                     </span>
                   ) : null}
-                </legend>
+                </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {question.options.map((option) => {
                     const selected = answer.optionIds.includes(option.id);

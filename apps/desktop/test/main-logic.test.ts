@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Decision, Settings } from "@decision-inbox/contracts";
+import {
+  SettingsSchema,
+  type Decision,
+  type Settings,
+} from "@decision-inbox/contracts";
 import {
   EncryptedValueStore,
   type SafeStorageLike,
@@ -36,6 +40,7 @@ function memoryFileSystem() {
 
 const settings: Settings = {
   notificationsEnabled: true,
+  notificationSoundEnabled: false,
   notifyWhileActive: false,
   closeToTray: true,
   autostart: false,
@@ -53,6 +58,23 @@ const decision: Decision = {
 };
 
 describe("main-process security and notifications", () => {
+  it("keeps existing settings when adding the opt-in sound preference", () => {
+    expect(
+      SettingsSchema.parse({
+        notificationsEnabled: false,
+        notifyWhileActive: true,
+        closeToTray: false,
+        autostart: true,
+      }),
+    ).toEqual({
+      notificationsEnabled: false,
+      notificationSoundEnabled: false,
+      notifyWhileActive: true,
+      closeToTray: false,
+      autostart: true,
+    });
+  });
+
   it("fails closed when OS encryption is unavailable and stores ciphertext only", () => {
     const safeStorage = new FakeSafeStorage();
     const fileSystem = memoryFileSystem();

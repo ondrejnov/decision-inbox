@@ -172,6 +172,7 @@ if (!hasSingleInstance) {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        autoplayPolicy: "no-user-gesture-required",
       },
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -329,6 +330,9 @@ if (!hasSingleInstance) {
           });
           notification.on("click", showInbox);
           notification.show();
+          if (settings.get().notificationSoundEnabled) {
+            mainWindow?.webContents.send("notification-sound");
+          }
         },
       });
       notifications.load();

@@ -1,0 +1,6 @@
+Asset: notification-sound.wav (originally Beeper.wav)
+Author: Aarni Koskela
+Source: https://github.com/akx/Notifications/blob/db184d33834a94028b6600d155d312ce7b704e8d/WAV/Beeper.wav
+License: CC0 1.0 / Public Domain
+License notice: https://github.com/akx/Notifications/blob/db184d33834a94028b6600d155d312ce7b704e8d/README.md
+SHA-256: 66ecdc7d08ba85c00a968059c4e7654e899efbade83ae53c7b913c2cca25fc3c

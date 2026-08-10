@@ -132,7 +132,7 @@ describe("AgentisClient", () => {
       runId: "run-9",
       answers: [{ questionId: "q-1", optionIds: ["prod"], answerText: "fast" }],
     };
-    const approval: ApprovalResolveRequest = {
+    const rejection: ApprovalResolveRequest = {
       decisionKind: "approval",
       externalId: "approval-1",
       taskId: "42",
@@ -140,8 +140,17 @@ describe("AgentisClient", () => {
       action: "reject",
       comment: "Needs another review",
     };
+    const approval: ApprovalResolveRequest = {
+      decisionKind: "approval",
+      externalId: "approval-2",
+      taskId: "42",
+      runId: "run-9",
+      action: "approve",
+      comment: "Ship it",
+    };
 
     await client.resolve("user-secret", question);
+    await client.resolve("user-secret", rejection);
     await client.resolve("user-secret", approval);
 
     expect(calls.map(({ method, params }) => ({ method, params }))).toEqual([
@@ -164,6 +173,14 @@ describe("AgentisClient", () => {
           external_id: "approval-1",
           approved: false,
           comment: "Needs another review",
+        },
+      },
+      {
+        method: "task.approve_reply",
+        params: {
+          external_id: "approval-2",
+          approved: true,
+          comment: "Ship it",
         },
       },
     ]);

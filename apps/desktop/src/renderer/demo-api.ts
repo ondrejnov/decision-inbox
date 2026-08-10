@@ -94,6 +94,7 @@ const history: Decision[] = [
 let activePending = [...pending];
 let settings: Settings = {
   notificationsEnabled: true,
+  notificationSoundEnabled: false,
   notifyWhileActive: false,
   closeToTray: true,
   autostart: false,
@@ -138,6 +139,7 @@ export const demoApi: DesktopApi = {
   onDecisionChanged:
     (_listener: (event: DecisionChangedSseEvent) => void) => () =>
       undefined,
+  onNotificationSound: (_listener: () => void) => () => undefined,
   onOpenPending: (_listener: () => void) => () => undefined,
   onTokenEntryState: (_listener: (state: { length: number }) => void) => () =>
     undefined,

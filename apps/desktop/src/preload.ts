@@ -62,6 +62,11 @@ const desktopApi: DesktopApi = {
     ipcRenderer.on("decision-changed", handler);
     return () => ipcRenderer.removeListener("decision-changed", handler);
   },
+  onNotificationSound: (listener: () => void) => {
+    const handler = () => listener();
+    ipcRenderer.on("notification-sound", handler);
+    return () => ipcRenderer.removeListener("notification-sound", handler);
+  },
   onOpenPending: (listener: () => void) => {
     const handler = () => listener();
     ipcRenderer.on("open-pending", handler);

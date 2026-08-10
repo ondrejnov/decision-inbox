@@ -79,6 +79,49 @@ void main() {
     expect(find.text('Choose a **target**', findRichText: true), findsNothing);
     expect(find.text('Choose a target', findRichText: true), findsOneWidget);
   });
+
+  testWidgets('Approve button submits the approve action', (tester) async {
+    final api = _FakeApi();
+    final controller = AppController(
+      api: api,
+      storage: _FakeStorage(),
+      notifications: NotificationService(),
+    );
+    await controller.connect('token');
+    final decision = Decision(
+      externalId: 'approval-1',
+      kind: DecisionKind.approval,
+      status: 'pending',
+      title: 'Publish release',
+      taskId: 'task-1',
+      runId: 'run-1',
+      createdAt: _createdAt,
+      approval: const DecisionApproval(commentAllowed: true),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DecisionCard(
+            decision: decision,
+            controller: controller,
+            readOnly: false,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Approve'));
+    await tester.pump();
+
+    expect(api.resolveRequests.single, {
+      'decisionKind': 'approval',
+      'externalId': 'approval-1',
+      'taskId': 'task-1',
+      'runId': 'run-1',
+      'action': 'approve',
+    });
+    controller.dispose();
+  });
 }
 
 final _createdAt = DateTime.utc(2026, 8, 7, 10);
@@ -90,6 +133,8 @@ AppController _controller() => AppController(
 );
 
 class _FakeApi implements DecisionApi {
+  final resolveRequests = <JsonMap>[];
+
   @override
   Uri get agentisUrl => Uri.parse('https://agentis.example');
 
@@ -125,10 +170,16 @@ class _FakeApi implements DecisionApi {
   }) async {}
 
   @override
-  Future<Session?> getSession(String token) async => null;
+  Future<Session?> getSession(String token) async => const Session(
+    userId: 'user-1',
+    displayName: 'Test User',
+    tenantId: 'tenant-1',
+  );
 
   @override
-  Future<void> resolve(String token, JsonMap request) async {}
+  Future<void> resolve(String token, JsonMap request) async {
+    resolveRequests.add(request);
+  }
 
   @override
   Future<void> unregisterPushDevice(
