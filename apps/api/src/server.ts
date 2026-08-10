@@ -10,6 +10,8 @@ import {
   DecisionChangedEventSchema,
   DecisionListResponseSchema,
   DecisionViewSchema,
+  DesktopPresenceRequestSchema,
+  DesktopPresenceResponseSchema,
   PendingCountResponseSchema,
   PushRegistrationResponseSchema,
   ResolveRequestSchema,
@@ -18,6 +20,7 @@ import {
   type DecisionChangedEvent,
   type DecisionListResponse,
   type DecisionView,
+  type DesktopPresenceResponse,
   type PendingCountResponse,
   type PushRegistrationResponse,
   type ResolveRequest,
@@ -28,6 +31,10 @@ import { AgentisClient, type AgentisRpcError } from "./agentis-client.js";
 import { loadConfig, type ApiConfig } from "./config.js";
 import { ApiError } from "./errors.js";
 import { EventHub, formatSseEvent } from "./event-hub.js";
+import {
+  DesktopPresenceStore,
+  type DesktopPresence,
+} from "./desktop-presence-store.js";
 import { IdempotencyStore } from "./idempotency.js";
 import { isIpAllowed } from "./ip-allowlist.js";
 import {
@@ -60,6 +67,7 @@ export interface AppOptions {
   idempotency?: IdempotencyStore;
   logger?: FastifyServerOptions["logger"];
   pushDispatcher?: PushDispatcher;
+  desktopPresence?: DesktopPresence;
   pushSender?: PushSender;
   pushStore?: PushRegistrationStore;
   webhookAllowedIps?: string[];
@@ -190,6 +198,18 @@ function pushRegistrationParams(request: FastifyRequest) {
   return parsed.data;
 }
 
+function desktopPresenceBody(request: FastifyRequest) {
+  const parsed = DesktopPresenceRequestSchema.safeParse(request.body);
+  if (!parsed.success) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "The desktop presence payload is invalid.",
+    );
+  }
+  return parsed.data;
+}
+
 export async function createApp(options: AppOptions = {}): Promise<BffApp> {
   const loaded = loadConfig();
   const config: ApiConfig = {
@@ -221,9 +241,10 @@ export async function createApp(options: AppOptions = {}): Promise<BffApp> {
     (config.firebaseProjectId
       ? new FcmPushSender(config.firebaseProjectId)
       : new DisabledPushSender());
+  const desktopPresence = options.desktopPresence ?? new DesktopPresenceStore();
   const pushDispatcher =
     options.pushDispatcher ??
-    new RegistrationPushDispatcher(pushStore, pushSender);
+    new RegistrationPushDispatcher(pushStore, pushSender, desktopPresence);
   const app = Fastify({
     logger:
       options.logger ??
@@ -327,6 +348,26 @@ export async function createApp(options: AppOptions = {}): Promise<BffApp> {
       }
     },
   );
+
+  app.put("/v1/desktop/presence", async (request, reply) => {
+    try {
+      const token = authToken(request);
+      const presence = desktopPresenceBody(request);
+      const identity = SessionResponseSchema.parse(
+        await agentis.getSession(token),
+      );
+      desktopPresence.report(
+        identity.tenant.id,
+        identity.user.id,
+        presence.active,
+      );
+      const response: DesktopPresenceResponse =
+        DesktopPresenceResponseSchema.parse({ ok: true });
+      return reply.send(response);
+    } catch (error) {
+      throw errorFromUnknown(error);
+    }
+  });
 
   app.get("/v1/decisions", async (request, reply) => {
     try {

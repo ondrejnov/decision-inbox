@@ -207,6 +207,24 @@ export type PushRegistrationResponse = z.infer<
   typeof PushRegistrationResponseSchema
 >;
 
+export const DesktopPresenceRequestSchema = z
+  .object({
+    active: z.boolean(),
+  })
+  .strict();
+export type DesktopPresenceRequest = z.infer<
+  typeof DesktopPresenceRequestSchema
+>;
+
+export const DesktopPresenceResponseSchema = z
+  .object({
+    ok: z.literal(true),
+  })
+  .strict();
+export type DesktopPresenceResponse = z.infer<
+  typeof DesktopPresenceResponseSchema
+>;
+
 export const SettingsSchema = z.object({
   notificationsEnabled: z.boolean(),
   notificationSoundEnabled: z.boolean().default(false),

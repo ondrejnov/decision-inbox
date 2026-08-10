@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   AndroidPushRegistrationParamsSchema,
   AndroidPushRegistrationRequestSchema,
+  DesktopPresenceRequestSchema,
+  DesktopPresenceResponseSchema,
   PushRegistrationResponseSchema,
 } from "@decision-inbox/contracts";
 
@@ -67,6 +69,21 @@ describe("Android push contracts", () => {
     ).toBe(false);
     expect(
       PushRegistrationResponseSchema.safeParse({ ok: true, token: "secret" })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("desktop presence contracts", () => {
+  it("accepts only an explicit active state and generic response", () => {
+    expect(DesktopPresenceRequestSchema.parse({ active: true })).toEqual({
+      active: true,
+    });
+    expect(DesktopPresenceResponseSchema.parse({ ok: true })).toEqual({
+      ok: true,
+    });
+    expect(
+      DesktopPresenceRequestSchema.safeParse({ active: true, userId: "user-2" })
         .success,
     ).toBe(false);
   });

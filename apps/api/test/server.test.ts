@@ -82,6 +82,11 @@ describe("BFF routes", () => {
         method: "DELETE",
         url: "/v1/push/registration/installation-1",
       },
+      {
+        method: "PUT",
+        url: "/v1/desktop/presence",
+        payload: { active: true },
+      },
     ]) {
       const response = await app.inject(request);
       expect(response.statusCode).toBe(401);
@@ -349,6 +354,80 @@ describe("BFF routes", () => {
     ]);
     expect(pushStore.listByTenant("tenant-1")).toEqual([]);
     expect(pushStore.listByTenant("tenant-2")).toHaveLength(1);
+    await app.close();
+  });
+
+  it("suppresses mobile push only for the user active on desktop", async () => {
+    const pushStore = new SqlitePushRegistrationStore({ path: ":memory:" });
+    pushStore.register({
+      installationId: "installation-1",
+      pushToken: "user-1-token",
+      platform: "android",
+      tenantId: "tenant-1",
+      userId: "user-1",
+    });
+    pushStore.register({
+      installationId: "installation-2",
+      pushToken: "user-2-token",
+      platform: "android",
+      tenantId: "tenant-1",
+      userId: "user-2",
+    });
+    const deliveries: Array<{ token: string; eventId: string }> = [];
+    const app = await createApp({
+      agentis: gateway(),
+      pushStore,
+      pushSender: {
+        send: async (registration, deliveredEvent) => {
+          deliveries.push({
+            token: registration.pushToken,
+            eventId: deliveredEvent.event_id,
+          });
+          return "sent";
+        },
+      },
+      webhookAllowedIps: ["127.0.0.1/32"],
+    });
+
+    const active = await app.inject({
+      method: "PUT",
+      url: "/v1/desktop/presence",
+      headers: { "x-auth-token": "user-secret" },
+      payload: { active: true },
+    });
+    const invalid = await app.inject({
+      method: "PUT",
+      url: "/v1/desktop/presence",
+      headers: { "x-auth-token": "user-secret" },
+      payload: { active: true, userId: "user-2" },
+    });
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/agentis/decision-changed",
+      payload: event,
+    });
+
+    expect(active.statusCode).toBe(200);
+    expect(active.json()).toEqual({ ok: true });
+    expect(invalid.statusCode).toBe(400);
+    expect(deliveries).toEqual([{ token: "user-2-token", eventId: "event-1" }]);
+
+    await app.inject({
+      method: "PUT",
+      url: "/v1/desktop/presence",
+      headers: { "x-auth-token": "user-secret" },
+      payload: { active: false },
+    });
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/agentis/decision-changed",
+      payload: { ...event, event_id: "event-2" },
+    });
+    expect(deliveries).toEqual([
+      { token: "user-2-token", eventId: "event-1" },
+      { token: "user-1-token", eventId: "event-2" },
+      { token: "user-2-token", eventId: "event-2" },
+    ]);
     await app.close();
   });
 

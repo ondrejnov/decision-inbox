@@ -2,6 +2,7 @@ import {
   ApiErrorResponseSchema,
   DecisionListResponseSchema,
   DecisionViewSchema,
+  DesktopPresenceResponseSchema,
   PendingCountResponseSchema,
   ResolveRequestSchema,
   ResolveResponseSchema,
@@ -99,6 +100,16 @@ export class BffClient {
       await this.request("/v1/decisions/resolve", this.requireToken(), {
         method: "POST",
         body: JSON.stringify(validated),
+      }),
+    );
+  }
+
+  async reportDesktopPresence(active: boolean): Promise<void> {
+    DesktopPresenceResponseSchema.parse(
+      await this.request("/v1/desktop/presence", this.requireToken(), {
+        method: "PUT",
+        body: JSON.stringify({ active }),
+        signal: AbortSignal.timeout(10_000),
       }),
     );
   }

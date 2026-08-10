@@ -6,6 +6,7 @@ import {
   Menu,
   nativeImage,
   Notification,
+  powerMonitor,
   safeStorage,
   shell,
   Tray,
@@ -17,6 +18,7 @@ import {
 } from "@decision-inbox/contracts";
 import { BffClient, BffClientError } from "./bff-client.js";
 import { CredentialStore } from "./credential-store.js";
+import { DesktopActivityReporter } from "./desktop-activity-reporter.js";
 import { EncryptedValueStore } from "./encrypted-store.js";
 import { NotificationManager } from "./notification-manager.js";
 import { SseClient } from "./sse-client.js";
@@ -42,6 +44,7 @@ if (!hasSingleInstance) {
   let bff: BffClient;
   let sse: SseClient;
   let credentials: CredentialStore;
+  let activity: DesktopActivityReporter;
   let settings: SettingsStore;
   let notifications: NotificationManager;
   let tokenEntryActive = false;
@@ -153,6 +156,7 @@ if (!hasSingleInstance) {
     }
     clearTokenEntry();
     const session = await bff.onboard(token);
+    activity.start();
     settings.update({ autostart });
     configureAutostart(settings.get().autostart);
     await syncInitialNotifications();
@@ -226,6 +230,7 @@ if (!hasSingleInstance) {
     );
     ipcMain.handle("logout", async () => {
       sse.stop();
+      await activity.stopAndReportInactive();
       await bff.logout();
       notifications.clear();
       updateTrayPendingCount(0);
@@ -300,6 +305,15 @@ if (!hasSingleInstance) {
       credentials = new CredentialStore(app.getPath("userData"), safeStorage);
       settings = new SettingsStore(settingsPath(app.getPath("userData")));
       bff = new BffClient(runtimeConfig.bffUrl, credentials);
+      activity = new DesktopActivityReporter({
+        getSystemIdleTime: () => powerMonitor.getSystemIdleTime(),
+        reportPresence: (active) => bff.reportDesktopPresence(active),
+      });
+      powerMonitor.on("lock-screen", () => activity.setSystemAvailable(false));
+      powerMonitor.on("suspend", () => activity.setSystemAvailable(false));
+      powerMonitor.on("unlock-screen", () => activity.setSystemAvailable(true));
+      powerMonitor.on("resume", () => activity.setSystemAvailable(true));
+      if (credentials.getToken()) activity.start();
       const baselineStore = new EncryptedValueStore(
         path.join(app.getPath("userData"), "notification-baseline.json"),
         safeStorage,
@@ -345,7 +359,10 @@ if (!hasSingleInstance) {
           mainWindow?.webContents.send("decision-changed", event);
         },
         onConnected: () => mainWindow?.webContents.send("events-reconnected"),
-        onUnauthorized: () => mainWindow?.webContents.send("auth-required"),
+        onUnauthorized: () => {
+          activity.stop();
+          mainWindow?.webContents.send("auth-required");
+        },
       });
       tray = createTray();
       registerIpc();
@@ -362,6 +379,7 @@ if (!hasSingleInstance) {
 
   app.on("before-quit", () => {
     isQuitting = true;
+    activity?.stop();
     sse?.stop();
     tray?.destroy();
   });

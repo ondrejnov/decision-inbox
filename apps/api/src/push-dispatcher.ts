@@ -4,6 +4,7 @@ import type {
   PushRegistration,
   PushRegistrationStore,
 } from "./push-registration-store.js";
+import type { DesktopPresence } from "./desktop-presence-store.js";
 
 export type PushSendResult = "sent" | "disabled" | "invalid-token";
 
@@ -96,6 +97,7 @@ export class RegistrationPushDispatcher implements PushDispatcher {
   constructor(
     private readonly registrations: PushRegistrationStore,
     private readonly sender: PushSender,
+    private readonly desktopPresence: DesktopPresence,
   ) {}
 
   async dispatch(event: DecisionChangedEvent): Promise<void> {
@@ -112,6 +114,13 @@ export class RegistrationPushDispatcher implements PushDispatcher {
     await Promise.all(
       this.registrations
         .listByTenant(event.tenant_id)
+        .filter(
+          (registration) =>
+            !this.desktopPresence.isActive(
+              registration.tenantId,
+              registration.userId,
+            ),
+        )
         .map(async (registration) => {
           try {
             const result = await this.sender.send(registration, event);
