@@ -57,7 +57,7 @@ flutter pub get
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
-flutter build apk --debug
+flutter build apk --debug --dart-define-from-file=firebase-defines.json
 ```
 
 The debug APK is written to `build/app/outputs/flutter-apk/app-debug.apk`.
