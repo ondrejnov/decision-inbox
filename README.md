@@ -10,9 +10,10 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&amp;logoColor=white">
 </p>
 
-Agents can move fast, but some actions still need a person. Decision Inbox
-collects those moments in one place so users can answer a question, approve a
-change, or reject a risky action without searching through Agentis runs.
+Agents can move fast, but some actions still need a person. Decision Inbox adds
+**Human In The Loop** oversight by collecting those moments in one place so
+users can answer a question, approve a change, or reject a risky action without
+searching through Agentis runs.
 
 > [!NOTE]
 > Decision Inbox is a companion for an existing Agentis deployment. It does not
